@@ -36,7 +36,7 @@ internal sealed class NterServer(int port)
     private static async Task HandleClientAsync(Socket client, int port, CancellationToken cts)
     {
         Console.WriteLine($"""
-                           已接受来自 {client.RemoteEndPoint} 的连接
+                           已接受来自 [35m{client.RemoteEndPoint}[0m 的连接
                            --------------------------------------------------------
                            """);
         var buffer = new byte[1024 * 1024]; // 1MB 缓冲区
@@ -75,7 +75,7 @@ internal sealed class NterServer(int port)
                 {
                     var totalDuration = DateTime.Now - startTime;
                     var totalBandwidth = totalBytesReceived * 8 / totalDuration.TotalSeconds / 1_000_000; // Mbps
-                    Console.WriteLine($"[{Environment.CurrentManagedThreadId}] 接收: {totalBytesReceived / (1024 * 1024):F2} MBytes 带宽: {totalBandwidth:F2} Mbps");
+                    Console.WriteLine($"[{Environment.CurrentManagedThreadId}] 接收: \e[32m{totalBytesReceived / (1024 * 1024):F2}\e[0m MBytes 带宽: \e[34m{totalBandwidth:F2}\e[0m Mbps");
                 }
                 else
                 {
@@ -93,7 +93,7 @@ internal sealed class NterServer(int port)
             client.Close();
             Console.WriteLine($"""
                                --------------------------------------------------------
-                               服务器已启动,监听端口 {port}
+                               服务器已启动,监听端口 [35m{port}[0m
                                --------------------------------------------------------
                                """);
         }
