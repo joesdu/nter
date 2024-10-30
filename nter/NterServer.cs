@@ -14,9 +14,11 @@ internal sealed class NterServer(int port)
         var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         listener.Bind(new IPEndPoint(IPAddress.Any, port));
         listener.Listen(10);
-        Console.WriteLine("-----------------------------------------------------------");
-        Console.WriteLine($"服务器已启动,监听端口 {port}");
-        Console.WriteLine("-----------------------------------------------------------");
+        Console.WriteLine($"""
+                           --------------------------------------------------------
+                           服务器已启动,监听端口 {port}
+                           --------------------------------------------------------
+                           """);
 
         while (!cts.IsCancellationRequested)
         {
@@ -34,14 +36,16 @@ internal sealed class NterServer(int port)
     /// <returns></returns>
     private static async Task HandleClientAsync(Socket client, int port, CancellationToken cts)
     {
-        Console.WriteLine($"已接受来自 {client.RemoteEndPoint} 的连接");
-        var buffer = new byte[1024 * 64]; // 64KB 缓冲区
+        Console.WriteLine($"""
+                           已接受来自 {client.RemoteEndPoint} 的连接
+                           --------------------------------------------------------
+                           """);
+        var buffer = new byte[1024 * 1024]; // 1MB 缓冲区
         var endMarker = BitConverter.GetBytes(int.MaxValue);
         var endMarkerLength = endMarker.Length;
 
         try
         {
-            Console.WriteLine("--------------------------------------------------------");
             while (!cts.IsCancellationRequested)
             {
                 long totalBytesReceived = 0;
@@ -57,19 +61,25 @@ internal sealed class NterServer(int port)
                     totalBytesReceived -= endMarkerLength; // 不计入结束符的字节数
                     break;
                 }
-
                 if (totalBytesReceived > 0)
                 {
                     var totalDuration = stopwatch.Elapsed;
                     var totalBandwidth = totalBytesReceived * 8 / totalDuration.TotalSeconds / 1_000_000; // Mbps
-                    Console.WriteLine($"[{Environment.CurrentManagedThreadId}] 接收:{totalBytesReceived / (1024 * 1024):F2} MBytes 带宽:{totalBandwidth:F2} Mbps");
+                    Console.WriteLine($"[{Environment.CurrentManagedThreadId}] 接收:\e[32m{totalBytesReceived / (1024 * 1024):F2}\e[0m MBytes 带宽:\e[34m{totalBandwidth:F2}\e[0m Mbps");
                 }
                 else
                 {
                     break; // 如果没有接收到数据，退出循环
                 }
             }
-
+            // 延迟测试
+            var latencyBuffer = new byte[1];
+            while (!cts.IsCancellationRequested)
+            {
+                var bytesRead = await client.ReceiveAsync(latencyBuffer, SocketFlags.None, cts);
+                if (bytesRead == 0) break; // 客户端已断开
+                await client.SendAsync(latencyBuffer, SocketFlags.None, cts); // 回送数据
+            }
             Console.WriteLine("--------------------------------------------------------");
         }
         catch (Exception ex)
@@ -79,9 +89,11 @@ internal sealed class NterServer(int port)
         finally
         {
             client.Close();
-            Console.WriteLine("--------------------------------------------------------");
-            Console.WriteLine($"服务器已启动,监听端口 {port}");
-            Console.WriteLine("--------------------------------------------------------");
+            Console.WriteLine($"""
+                               --------------------------------------------------------
+                               服务器已启动,监听端口 {port}
+                               --------------------------------------------------------
+                               """);
         }
     }
 }

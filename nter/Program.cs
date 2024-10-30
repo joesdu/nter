@@ -1,5 +1,4 @@
-﻿// See https://aka.ms/new-console-template for more information
-namespace nter;
+﻿namespace nter;
 
 public static class Program
 {
