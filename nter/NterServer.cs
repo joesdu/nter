@@ -72,14 +72,6 @@ internal sealed class NterServer(int port)
                     break; // 如果没有接收到数据，退出循环
                 }
             }
-            // 延迟测试
-            var latencyBuffer = new byte[1];
-            while (!cts.IsCancellationRequested)
-            {
-                var bytesRead = await client.ReceiveAsync(latencyBuffer, SocketFlags.None, cts);
-                if (bytesRead == 0) break; // 客户端已断开
-                await client.SendAsync(latencyBuffer, SocketFlags.None, cts); // 回送数据
-            }
             Console.WriteLine("--------------------------------------------------------");
         }
         catch (Exception ex)

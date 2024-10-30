@@ -50,26 +50,9 @@ internal sealed class NterClient(string serverAddress, int port)
             var averageBandwidth = totalBytesSentOverall * 8 / overallDuration.TotalSeconds / 1_000_000; // Mbps
             Console.WriteLine($"""
                                 -------------------------------------------------------------
-                                [{Environment.CurrentManagedThreadId}]|总用时:{overallDuration.TotalSeconds:F2}秒,总发送:\e[32m{totalBytesSentOverall / (1024 * 1024 * 1024):F2}\e[0m GBytes,带宽:\e[34m{averageBandwidth:F2}\e[0m Mbps/秒
+                                [{Environment.CurrentManagedThreadId}]|总用时:{overallDuration.TotalSeconds:F2}秒,总发送:[32m{totalBytesSentOverall / (1024 * 1024 * 1024):F2}[0m GBytes,带宽:[34m{averageBandwidth:F2}[0m Mbps/秒
                                 -------------------------------------------------------------
                                 """);
-            // 延迟测试
-            var latencyBuffer = new byte[1];
-            var latencyStopwatch = new Stopwatch();
-            const int latencyTestCount = 100;
-            double totalLatency = 0;
-
-            for (var i = 0; i < latencyTestCount; i++)
-            {
-                latencyStopwatch.Restart();
-                await client.SendAsync(latencyBuffer, SocketFlags.None, cts);
-                await client.ReceiveAsync(latencyBuffer, SocketFlags.None, cts);
-                latencyStopwatch.Stop();
-                totalLatency += latencyStopwatch.Elapsed.TotalMilliseconds;
-            }
-
-            var averageLatency = totalLatency / latencyTestCount;
-            Console.WriteLine($"平均延迟: {averageLatency:F2} 毫秒");
         }
         catch (Exception ex)
         {
