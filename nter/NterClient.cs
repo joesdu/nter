@@ -50,7 +50,7 @@ internal sealed class NterClient(string serverAddress, int port)
             var averageBandwidth = totalBytesSentOverall * 8 / overallDuration.TotalSeconds / 1_000_000; // Mbps
             Console.WriteLine($"""
                                 -------------------------------------------------------------
-                                [{Environment.CurrentManagedThreadId}]|总用时:{overallDuration.TotalSeconds:F2}秒,总发送:[32m{totalBytesSentOverall / (1024 * 1024 * 1024):F2}[0m GBytes,带宽:[34m{averageBandwidth:F2}[0m Mbps/秒
+                                [{Environment.CurrentManagedThreadId}]|总用时:{overallDuration.TotalSeconds:F2}秒,总发送:[32m{totalBytesSentOverall / (1024 * 1024 * 1024):F2}[0m GBytes,带宽:[34m{averageBandwidth:F2}[0m Mbps
                                 -------------------------------------------------------------
                                 """);
         }
