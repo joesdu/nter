@@ -31,6 +31,11 @@ internal sealed class NterClient(string serverAddress, int port)
             {
                 long totalBytesSent = 0;
                 var testStopwatch = Stopwatch.StartNew();
+                var startTime = DateTime.Now;
+
+                // 将时间戳写入缓冲区的前8个字节
+                var timestampBytes = BitConverter.GetBytes(startTime.Ticks);
+                Array.Copy(timestampBytes, 0, buffer, 0, timestampBytes.Length);
 
                 while (testStopwatch.Elapsed.TotalSeconds < testDuration)
                 {
@@ -43,14 +48,14 @@ internal sealed class NterClient(string serverAddress, int port)
                 await client.SendAsync(endMarker, SocketFlags.None, cts);
                 var totalDuration = testStopwatch.Elapsed;
                 var totalBandwidthMbps = totalBytesSent * 8 / totalDuration.TotalSeconds / 1_000_000; // Mbps
-                Console.WriteLine($"[{i + 1}]|用时:{totalDuration.TotalSeconds:F2}秒|发送:\e[32m{totalBytesSent / (1024 * 1024):F2}\e[0m MBytes |带宽:\e[34m{totalBandwidthMbps:F2}\e[0m Mbps");
+                Console.WriteLine($"[{i + 1}]|用时:{totalDuration.TotalSeconds:F2}秒|发送: {totalBytesSent / (1024 * 1024):F2} MBytes |带宽: {totalBandwidthMbps:F2} Mbps");
             }
 
             var overallDuration = overallStopwatch.Elapsed;
             var averageBandwidth = totalBytesSentOverall * 8 / overallDuration.TotalSeconds / 1_000_000; // Mbps
             Console.WriteLine($"""
                                 -------------------------------------------------------------
-                                [{Environment.CurrentManagedThreadId}]|总用时:{overallDuration.TotalSeconds:F2}秒,总发送:[32m{totalBytesSentOverall / (1024 * 1024 * 1024):F2}[0m GBytes,带宽:[34m{averageBandwidth:F2}[0m Mbps
+                                [{Environment.CurrentManagedThreadId}]|总用时:{overallDuration.TotalSeconds:F2}秒,总发送: {totalBytesSentOverall / (1024 * 1024 * 1024):F2} GBytes,带宽: {averageBandwidth:F2} Mbps
                                 -------------------------------------------------------------
                                 """);
         }

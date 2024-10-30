@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 
 namespace nter;
@@ -49,23 +48,34 @@ internal sealed class NterServer(int port)
             while (!cts.IsCancellationRequested)
             {
                 long totalBytesReceived = 0;
-                var stopwatch = Stopwatch.StartNew();
+                var startTime = DateTime.MinValue;
 
                 while (true)
                 {
                     var bytesRead = await client.ReceiveAsync(buffer, SocketFlags.None, cts);
                     if (bytesRead == 0) break; // 客户端已断开
+
+                    if (startTime == DateTime.MinValue)
+                    {
+                        // 解析客户端发送的时间戳
+                        var timestampBytes = buffer.AsSpan(0, 8).ToArray();
+                        var timestampTicks = BitConverter.ToInt64(timestampBytes, 0);
+                        startTime = new DateTime(timestampTicks);
+                    }
+
                     totalBytesReceived += bytesRead;
+
                     // 检查是否接收到结束符
                     if (bytesRead < endMarkerLength || !buffer.AsSpan(bytesRead - endMarkerLength, endMarkerLength).SequenceEqual(endMarker)) continue;
                     totalBytesReceived -= endMarkerLength; // 不计入结束符的字节数
                     break;
                 }
+
                 if (totalBytesReceived > 0)
                 {
-                    var totalDuration = stopwatch.Elapsed;
+                    var totalDuration = DateTime.Now - startTime;
                     var totalBandwidth = totalBytesReceived * 8 / totalDuration.TotalSeconds / 1_000_000; // Mbps
-                    Console.WriteLine($"[{Environment.CurrentManagedThreadId}] 接收:\e[32m{totalBytesReceived / (1024 * 1024):F2}\e[0m MBytes 带宽:\e[34m{totalBandwidth:F2}\e[0m Mbps");
+                    Console.WriteLine($"[{Environment.CurrentManagedThreadId}] 接收: {totalBytesReceived / (1024 * 1024):F2} MBytes 带宽: {totalBandwidth:F2} Mbps");
                 }
                 else
                 {
