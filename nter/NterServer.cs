@@ -1,9 +1,14 @@
-﻿using System.Net;
+﻿using System.Diagnostics;
+using System.Net;
 using System.Net.Sockets;
+using Spectre.Console;
 
 namespace nter;
 internal sealed class NterServer(int port)
 {
+    private readonly byte[] _buffer = new byte[1024 * 1024]; // 1MB 缓冲区
+
+
     /// <summary>
     /// 运行服务器
     /// </summary>
@@ -13,88 +18,94 @@ internal sealed class NterServer(int port)
         var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         listener.Bind(new IPEndPoint(IPAddress.Any, port));
         listener.Listen(10);
-        Console.WriteLine($"""
-                           --------------------------------------------------------
-                           服务器已启动,监听端口 {port}
-                           --------------------------------------------------------
+        AnsiConsole.MarkupLine($"""
+                           [green]--------------------------------------------------------[/]
+                           服务器已启动,监听端口 [purple]{port}[/]
+                           [green]--------------------------------------------------------[/]
                            """);
 
         while (!cts.IsCancellationRequested)
         {
             var client = await listener.AcceptAsync(cts);
-            _ = Task.Run(() => HandleClientAsync(client, port, cts), cts);
+            _ = Task.Run(() => HandleClientAsync(client, cts), cts);
         }
     }
 
-    /// <summary>
-    /// 处理客户端连接
-    /// </summary>
-    /// <param name="client"></param>
-    /// <param name="port"></param>
-    /// <param name="cts"></param>
-    /// <returns></returns>
-    private static async Task HandleClientAsync(Socket client, int port, CancellationToken cts)
+    private async Task HandleClientAsync(Socket socket, CancellationToken cts)
     {
-        Console.WriteLine($"""
-                           已接受来自 [35m{client.RemoteEndPoint}[0m 的连接
-                           --------------------------------------------------------
+        AnsiConsole.MarkupLine($"""
+                           已接受来自 [purple]{socket.RemoteEndPoint}[/] 的连接
+                           [green]--------------------------------------------------------[/]
                            """);
-        var buffer = new byte[1024 * 1024]; // 1MB 缓冲区
-        var endMarker = BitConverter.GetBytes(int.MaxValue);
-        var endMarkerLength = endMarker.Length;
-
+        long totalBytesReceived = 0;
+        var startTicks = Stopwatch.GetTimestamp();
         try
         {
-            while (!cts.IsCancellationRequested)
+            var table = new Table
             {
-                long totalBytesReceived = 0;
-                var startTime = DateTime.MinValue;
+                Border = TableBorder.Rounded,
+            };
+            table.AddColumn("[bold]ID[/]");
+            table.AddColumn("[bold]间隔[/]");
+            table.AddColumn("[bold]接收[/]");
+            table.AddColumn("[bold]带宽[/]");
+            table.Columns[0].Centered();
+            table.Columns[1].Centered();
+            table.Columns[2].Centered();
+            table.Columns[3].Centered();
 
-                while (true)
+            // 使用 Live 表格
+            await AnsiConsole.Live(table).StartAsync(async ctx =>
+            {
+                while (!cts.IsCancellationRequested)
                 {
-                    var bytesRead = await client.ReceiveAsync(buffer, SocketFlags.None, cts);
-                    if (bytesRead == 0) break; // 客户端已断开
-
-                    if (startTime == DateTime.MinValue)
+                    var intervalStopwatch = Stopwatch.StartNew();
+                    long intervalBytesReceived = 0;
+                    while (true)
                     {
-                        // 解析客户端发送的时间戳
-                        var timestampBytes = buffer.AsSpan(0, 8).ToArray();
-                        var timestampTicks = BitConverter.ToInt64(timestampBytes, 0);
-                        startTime = new DateTime(timestampTicks);
+                        var bytesRead = await socket.ReceiveAsync(_buffer, SocketFlags.None, cts);
+                        if (bytesRead == 0) break; // 客户端已断开
+                        totalBytesReceived += bytesRead;
+                        intervalBytesReceived += bytesRead;
+                        // 检查是否接收到结束字符
+                        if (bytesRead < 4 || BitConverter.ToInt32(_buffer, bytesRead - 4) != int.MaxValue) continue;
+                        totalBytesReceived -= 4; // 不计入结束字符的字节数
+                        break;
                     }
-
-                    totalBytesReceived += bytesRead;
-
-                    // 检查是否接收到结束符
-                    if (bytesRead < endMarkerLength || !buffer.AsSpan(bytesRead - endMarkerLength, endMarkerLength).SequenceEqual(endMarker)) continue;
-                    totalBytesReceived -= endMarkerLength; // 不计入结束符的字节数
-                    break;
+                    if (intervalBytesReceived > 0)
+                    {
+                        var elapsedSeconds = (Stopwatch.GetTimestamp() - startTicks) / (double)Stopwatch.Frequency;
+                        var intervalThroughput = intervalBytesReceived * 8 / intervalStopwatch.Elapsed.TotalSeconds / 1_000_000_000; // Gbps
+                        table.AddRow(
+                            $"{Environment.CurrentManagedThreadId}",
+                            $"{Math.Abs(elapsedSeconds - intervalStopwatch.Elapsed.TotalSeconds):F2}-{elapsedSeconds:F2}秒",
+                            $"{intervalBytesReceived / (1024 * 1024):F2} MBytes",
+                            $"{intervalThroughput:F2} Gbits/秒"
+                        );
+                        intervalStopwatch.Restart();
+                        // 更新表格
+                        ctx.Refresh();
+                    }
+                    else
+                    {
+                        break; // 如果没有接收到数据，退出循环
+                    }
                 }
-
-                if (totalBytesReceived > 0)
-                {
-                    var totalDuration = DateTime.Now - startTime;
-                    var totalBandwidth = totalBytesReceived * 8 / totalDuration.TotalSeconds / 1_000_000; // Mbps
-                    Console.WriteLine($"[{Environment.CurrentManagedThreadId}] 接收: \e[32m{totalBytesReceived / (1024 * 1024):F2}\e[0m MBytes 带宽: \e[34m{totalBandwidth:F2}\e[0m Mbps");
-                }
-                else
-                {
-                    break; // 如果没有接收到数据，退出循环
-                }
-            }
-            Console.WriteLine("--------------------------------------------------------");
+            });
         }
-        catch (Exception ex)
+        catch (SocketException)
         {
-            Console.WriteLine($"发生异常:{ex.Message}");
+            var totalDuration = (Stopwatch.GetTimestamp() - startTicks) / (double)Stopwatch.Frequency;
+            var totalThroughput = totalBytesReceived * 8 / totalDuration / 1_000_000_000; // Gbits
+            AnsiConsole.MarkupLine($"接收: [green]{totalBytesReceived / (1024 * 1024):F2}[/] MBytes 带宽: [blue]{totalThroughput:F2}[/] Gbits");
         }
         finally
         {
-            client.Close();
-            Console.WriteLine($"""
-                               --------------------------------------------------------
-                               服务器已启动,监听端口 [35m{port}[0m
-                               --------------------------------------------------------
+            socket.Close();
+            AnsiConsole.MarkupLine($"""
+                               [green]--------------------------------------------------------[/]
+                               服务器已启动,监听端口 [purple]{port}[/]
+                               [green]--------------------------------------------------------[/]
                                """);
         }
     }

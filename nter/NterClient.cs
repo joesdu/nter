@@ -1,73 +1,97 @@
 ﻿using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using Spectre.Console;
 
 namespace nter;
 internal sealed class NterClient(string serverAddress, int port)
 {
     /// <summary>
-    /// 运行客户端
+    /// 创建连接
     /// </summary>
     /// <param name="cts"></param>
     /// <returns></returns>
-    public async Task RunClient(CancellationToken cts)
+    public async Task<Socket> ConnectAsync(CancellationToken cts)
     {
         var client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        try
-        {
-            await client.ConnectAsync(new IPEndPoint(IPAddress.Parse(serverAddress), port), cts);
-            Console.WriteLine($"""
-                               本地 [[35m{client.LocalEndPoint}[0m] 连接到 [[35m{client.RemoteEndPoint}[0m]
-                               -------------------------------------------------------------
-                               """);
-            var buffer = new byte[1024 * 1024]; // 1MB 缓冲区
-            new Random().NextBytes(buffer); // 填充随机数据
-            var endMarker = BitConverter.GetBytes(int.MaxValue);
-
-            const int testDuration = 10; // 每次测试持续时间（秒）
-            const int testCount = 6; // 测试次数
-            long totalBytesSentOverall = 0;
-            var overallStopwatch = Stopwatch.StartNew();
-
-            for (var i = 0; i < testCount; i++)
-            {
-                long totalBytesSent = 0;
-                var testStopwatch = Stopwatch.StartNew();
-                var startTime = DateTime.Now;
-
-                // 将时间戳写入缓冲区的前8个字节
-                var timestampBytes = BitConverter.GetBytes(startTime.Ticks);
-                Array.Copy(timestampBytes, 0, buffer, 0, timestampBytes.Length);
-
-                while (testStopwatch.Elapsed.TotalSeconds < testDuration)
-                {
-                    await client.SendAsync(buffer, SocketFlags.None, cts);
-                    totalBytesSent += buffer.Length;
-                    totalBytesSentOverall += buffer.Length;
-                }
-
-                // 发送结束符
-                await client.SendAsync(endMarker, SocketFlags.None, cts);
-                var totalDuration = testStopwatch.Elapsed;
-                var totalBandwidthMbps = totalBytesSent * 8 / totalDuration.TotalSeconds / 1_000_000; // Mbps
-                Console.WriteLine($"[{i + 1}]|用时:\e[33m{totalDuration.TotalSeconds:F2}\e[0m秒|发送: \e[32m{totalBytesSent / (1024 * 1024):F2}\e[0m MBytes |带宽: \e[34m{totalBandwidthMbps:F2}\e[0m Mbps");
-            }
-
-            var overallDuration = overallStopwatch.Elapsed;
-            var averageBandwidth = totalBytesSentOverall * 8 / overallDuration.TotalSeconds / 1_000_000; // Mbps
-            Console.WriteLine($"""
-                                -------------------------------------------------------------
-                                [{Environment.CurrentManagedThreadId}]|总用时:[33m{overallDuration.TotalSeconds:F2}[0m秒,总发送: [32m{totalBytesSentOverall / (1024 * 1024 * 1024):F2}[0m GBytes,带宽: [34m{averageBandwidth:F2}[0m Mbps
-                                -------------------------------------------------------------
+        await client.ConnectAsync(new IPEndPoint(IPAddress.Parse(serverAddress), port), cts);
+        AnsiConsole.MarkupLine($"""
+                                本地 [purple]{client.LocalEndPoint}[/] 连接到 [purple]{client.RemoteEndPoint}[/]
+                                [green]-------------------------------------------------------------[/]
                                 """);
-        }
-        catch (Exception ex)
+        return client;
+    }
+
+    /// <summary>
+    /// 发送数据
+    /// </summary>
+    /// <param name="socket"></param>
+    /// <param name="cts"></param>
+    /// <returns></returns>
+    public static async Task SendDataAsync(Socket socket, CancellationToken cts)
+    {
+        var buffer = new byte[1024 * 1024]; // 1MB 缓冲区
+        RandomNumberGenerator.Fill(buffer); // 填充随机数据
+
+        long totalBytesSent = 0;
+        var stopwatch = Stopwatch.StartNew();
+        const int testDuration = 1; // 每次测试持续时间（秒）
+        var intervalStopwatch = Stopwatch.StartNew();
+
+        // 创建表格
+        var table = new Table
         {
-            Console.WriteLine($"连接失败:{ex.Message}");
-        }
-        finally
+            Border = TableBorder.Rounded,
+        };
+        table.AddColumn("[bold]ID[/]");
+        table.AddColumn("[bold]间隔[/]");
+        table.AddColumn("[bold]发送[/]");
+        table.AddColumn("[bold]带宽[/]");
+        table.Columns[0].Centered();
+        table.Columns[1].Centered();
+        table.Columns[2].Centered();
+        table.Columns[3].Centered();
+
+        // 使用 Live 表格
+        await AnsiConsole.Live(table).StartAsync(async ctx =>
         {
-            client.Close();
-        }
+            for (var i = 1; i <= 10; i++)
+            {
+                try
+                {
+                    long intervalBytesSent = 0;
+                    var testStopwatch = Stopwatch.StartNew();
+                    while (testStopwatch.Elapsed.TotalSeconds < testDuration)
+                    {
+                        await socket.SendAsync(buffer, SocketFlags.None, cts);
+                        intervalBytesSent += buffer.Length;
+                        totalBytesSent += buffer.Length;
+                    }
+                    // 发送结束字符
+                    var endMarker = BitConverter.GetBytes(int.MaxValue);
+                    await socket.SendAsync(endMarker, SocketFlags.None, cts);
+                    var elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
+                    var intervalThroughput = intervalBytesSent * 8 / intervalStopwatch.Elapsed.TotalSeconds / 1_000_000_000; // Gbps
+                    table.AddRow(
+                        $"{i}",
+                        $"{Math.Abs(elapsedSeconds - intervalStopwatch.Elapsed.TotalSeconds):F2}-{elapsedSeconds:F2}秒",
+                        $"{intervalBytesSent / (1024 * 1024):F2} MBytes",
+                        $"{intervalThroughput:F2} Gbits/秒"
+                    );
+                    intervalStopwatch.Restart();
+                    // 更新表格
+                    ctx.Refresh();
+                }
+                catch (SocketException ex)
+                {
+                    AnsiConsole.MarkupLine($"[red]发送数据时发生异常:[/] {ex.Message}");
+                    throw;
+                }
+            }
+        });
+        var totalDuration = stopwatch.Elapsed.TotalSeconds;
+        var totalThroughputMbps = totalBytesSent * 8 / totalDuration / 1_000_000_000; // Gbits
+        AnsiConsole.MarkupLine($"发送: [green]{totalBytesSent / (1024 * 1024):F2}[/] MBytes 带宽: [blue]{totalThroughputMbps:F2}[/] Gbits");
     }
 }

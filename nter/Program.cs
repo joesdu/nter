@@ -1,4 +1,7 @@
-﻿namespace nter;
+﻿using System.Net.Sockets;
+using Spectre.Console;
+
+namespace nter;
 
 public static class Program
 {
@@ -39,7 +42,19 @@ public static class Program
                     // 作为客户端运行
                     var serverAddress = args[1];
                     var client = new NterClient(serverAddress, port);
-                    await client.RunClient(token);
+                    try
+                    {
+                        var socket = await client.ConnectAsync(token);
+                        await NterClient.SendDataAsync(socket, token);
+                    }
+                    catch (SocketException sx)
+                    {
+                        AnsiConsole.MarkupLine($"[red]连接失败:[/] {sx.Message},可能是服务端没有启动");
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]连接失败:[/] {ex.Message}");
+                    }
                     break;
                 }
             case "-h":
