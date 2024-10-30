@@ -31,7 +31,7 @@ internal sealed class NterClient(string serverAddress, int port)
     /// <returns></returns>
     public static async Task SendDataAsync(Socket socket, CancellationToken cts)
     {
-        var buffer = new byte[1024 * 1024]; // 1MB 缓冲区
+        var buffer = new byte[1024 * 64]; // 64KB 缓冲区
         RandomNumberGenerator.Fill(buffer); // 填充随机数据
 
         long totalBytesSent = 0;

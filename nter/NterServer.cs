@@ -6,7 +6,7 @@ using Spectre.Console;
 namespace nter;
 internal sealed class NterServer(int port)
 {
-    private readonly byte[] _buffer = new byte[1024 * 1024]; // 1MB 缓冲区
+    private readonly byte[] _buffer = new byte[1024 * 64]; // 64KB 缓冲区
 
 
     /// <summary>
