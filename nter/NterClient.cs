@@ -35,9 +35,9 @@ internal sealed class NterClient(string serverAddress, int port)
         RandomNumberGenerator.Fill(buffer); // 填充随机数据
 
         long totalBytesSent = 0;
-        var stopwatch = Stopwatch.StartNew();
+        var startTimestamp = Stopwatch.GetTimestamp();
         const int testDuration = 1; // 每次测试持续时间（秒）
-        var intervalStopwatch = Stopwatch.StartNew();
+        var intervalStartTimestamp = Stopwatch.GetTimestamp();
 
         // 创建表格
         var table = new Table
@@ -61,36 +61,36 @@ internal sealed class NterClient(string serverAddress, int port)
                 try
                 {
                     long intervalBytesSent = 0;
-                    var testStopwatch = Stopwatch.StartNew();
-                    while (testStopwatch.Elapsed.TotalSeconds < testDuration)
+                    var testStartTimestamp = Stopwatch.GetTimestamp();
+                    while ((Stopwatch.GetTimestamp() - testStartTimestamp) / (double)Stopwatch.Frequency < testDuration)
                     {
                         await socket.SendAsync(buffer, SocketFlags.None, cts);
-                        intervalBytesSent += buffer.Length;
-                        totalBytesSent += buffer.Length;
+                        Interlocked.Add(ref intervalBytesSent, buffer.Length);
+                        Interlocked.Add(ref totalBytesSent, buffer.Length);
                     }
                     // 发送结束字符
                     var endMarker = BitConverter.GetBytes(int.MaxValue);
                     await socket.SendAsync(endMarker, SocketFlags.None, cts);
-                    var elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
-                    var intervalThroughput = intervalBytesSent * 8 / intervalStopwatch.Elapsed.TotalSeconds / 1_000_000_000; // Gbps
+                    var elapsedSeconds = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
+                    var intervalElapsedSeconds = (Stopwatch.GetTimestamp() - intervalStartTimestamp) / (double)Stopwatch.Frequency;
+                    var intervalThroughput = intervalBytesSent * 8 / intervalElapsedSeconds / 1_000_000_000; // Gbps
                     table.AddRow(
                         $"{i}",
-                        $"{Math.Abs(elapsedSeconds - intervalStopwatch.Elapsed.TotalSeconds):F2}-{elapsedSeconds:F2}秒",
+                        $"{Math.Abs(elapsedSeconds - intervalElapsedSeconds):F2}-{elapsedSeconds:F2}秒",
                         $"{intervalBytesSent / (1024 * 1024):F2} MBytes",
                         $"{intervalThroughput:F2} Gbits/秒"
                     );
-                    intervalStopwatch.Restart();
+                    intervalStartTimestamp = Stopwatch.GetTimestamp();
                     // 更新表格
                     ctx.Refresh();
                 }
                 catch (SocketException ex)
                 {
                     AnsiConsole.MarkupLine($"[red]发送数据时发生异常:[/] {ex.Message}");
-                    throw;
                 }
             }
         });
-        var totalDuration = stopwatch.Elapsed.TotalSeconds;
+        var totalDuration = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
         var totalThroughputMbps = totalBytesSent * 8 / totalDuration / 1_000_000_000; // Gbits
         AnsiConsole.MarkupLine($"发送: [green]{totalBytesSent / (1024 * 1024):F2}[/] MBytes 带宽: [blue]{totalThroughputMbps:F2}[/] Gbits");
     }

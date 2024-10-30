@@ -20,7 +20,7 @@ internal sealed class NterServer(int port)
         listener.Listen(10);
         AnsiConsole.MarkupLine($"""
                            [green]--------------------------------------------------------[/]
-                           服务器已启动,监听端口 [purple]{port}[/]
+                           服务端已启动,监听端口 [purple]{port}[/]
                            [green]--------------------------------------------------------[/]
                            """);
 
